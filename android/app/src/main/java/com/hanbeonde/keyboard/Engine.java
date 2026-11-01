@@ -52,6 +52,177 @@ public final class Engine {
     private static final Pattern RE_SURPRISED = Pattern.compile("헐|대박|\\?");
     private static final Pattern RE_ENDS = Pattern.compile("[?ㅋ]$");
 
+    // ---------------- 메시지 맞춤 순화 ----------------
+    // "야이 개새끼야 너 때문에 약속 시간 늦었잖아" → "아니 너 때문에 약속 시간 늦었잖아 ㅜㅜ"
+    private static final List<String> INTENS = java.util.Arrays.asList("존나", "졸라", "존내", "존니", "좃나", "조낸");
+    private static final String[] INTENS_SURF = {"존나", "졸라", "존내", "존니", "좃나", "조낸", "ㅈㄴ", "whssk"};
+    private static final List<String> INTERJ = java.util.Arrays.asList("야", "이", "야이", "이런", "저런", "아오", "에이", "아씨", "저");
+    private static final String[] APPEAR_PRED = {"생겼", "같이", "같아", "같다", "같네", "같은", "닮", "처럼"};
+    private static final List<String> DANGLING = java.util.Arrays.asList("진짜", "완전", "너무", "개", "좀", "왜", "너", "니", "넌", "진심", "약간", "되게", "엄청", "아주", "그냥");
+    private static final String EDGE = "\"'“”‘’()[]{}<>.,!~…·:;";
+    private static final Pattern RE_TAIL = Pattern.compile("[\\s\\u00a0\\u3000ㅋㅎㅠㅜ.,!~…]+$");
+    private static final Pattern RE_HEAD = Pattern.compile("^[\\s\\u00a0\\u3000.,!~…]+");
+    private static final Pattern RE_ENDP = Pattern.compile("[?!]$");
+    private static final Pattern RE_WOW = Pattern.compile("헐|대박");
+
+    private static String stripEdge(String s) {
+        int a = 0, b = s.length();
+        while (a < b && (EDGE.indexOf(s.charAt(a)) >= 0 || s.charAt(a) == '?')) a++;
+        while (b > a && EDGE.indexOf(s.charAt(b - 1)) >= 0) b--;
+        return s.substring(a, b);
+    }
+
+    private static String prefixed(String p, String c, String... alts) {
+        String first = c.split(" ", -1)[0].replaceAll(",+$", "");
+        if (first.equals(p.replaceAll("[ ,]+$", ""))) return c;
+        for (String w : alts) if (first.equals(w)) return c;
+        return p + c;
+    }
+
+    private static final Pattern RE_ADDR = Pattern.compile("^(너|넌|널|니가|네가|니네|니도|니꺼|니거)");
+    private static final Pattern RE_ADDR_END = Pattern.compile("(냐|잖아|하지 ?마|해라|줄래|줘)[?!]*$");
+
+    /** 상대에게 하는 말인지 (너/넌/니가/네가 …) */
+    private static boolean addressed(String c) {
+        for (String w : c.split(" ", -1)) if (RE_ADDR.matcher(w).find()) return true;
+        return RE_ADDR_END.matcher(c).find(); // 따지거나 부탁하는 말끝
+    }
+
+    private static String joined(String c, String tail) {
+        return RE_ENDP.matcher(c).find() ? c + " " + tail : c + ". " + tail;
+    }
+
+    private static final class Tok {
+        final int s, e;
+        final String t;
+        String st = "keep", rep = "";
+
+        Tok(int s, int e, String t) {
+            this.s = s;
+            this.e = e;
+            this.t = t;
+        }
+    }
+
+    /** 보내려던 메시지에서 공격적인 말만 빼고 다듬은 문장들. 문장이 성립하지 않으면 null */
+    private static List<String> contextualSuggestions(String text, List<Match> matches, String group, String emotion) {
+        List<Tok> toks = new ArrayList<>();
+        int i = 0, n = text.length();
+        while (i < n) {
+            while (i < n && isSpace(text.charAt(i))) i++;
+            if (i >= n) break;
+            int s = i;
+            while (i < n && !isSpace(text.charAt(i))) i++;
+            toks.add(new Tok(s, i, text.substring(s, i)));
+        }
+        for (Tok tk : toks) {
+            for (Match m : matches) {
+                if (!(m.start < tk.e && tk.s < m.end) || "bad".equals(tk.st)) continue;
+                if (m.start >= tk.s && m.end <= tk.e && INTENS.contains(m.matched)) {
+                    String core = stripEdge(tk.t), low = core.toLowerCase(java.util.Locale.ROOT), rep = "진짜";
+                    for (String p : INTENS_SURF) {
+                        if (low.startsWith(p)) {
+                            String rest = core.substring(p.length());
+                            rep = rest.isEmpty() ? "진짜" : "진짜 " + rest;
+                            break;
+                        }
+                    }
+                    tk.st = "soft";
+                    tk.rep = rep;
+                } else {
+                    tk.st = "bad";
+                }
+            }
+        }
+        boolean incomplete = false;
+        for (int k = 0; k < toks.size(); k++) {
+            if (!"bad".equals(toks.get(k).st)) continue;
+            for (int j = k - 1; j >= 0 && "keep".equals(toks.get(j).st) && INTERJ.contains(stripEdge(toks.get(j).t)); j--) {
+                toks.get(j).st = "drop";
+            }
+            if (k + 1 < toks.size() && "keep".equals(toks.get(k + 1).st)) {
+                String nt = stripEdge(toks.get(k + 1).t);
+                for (String p : APPEAR_PRED) {
+                    if (nt.startsWith(p)) {
+                        toks.get(k + 1).st = "drop";
+                        incomplete = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (incomplete) return null;
+        for (int z = toks.size() - 1; z >= 0; z--) {
+            if (!stripEdge(toks.get(z).t).isEmpty()) {
+                if ("bad".equals(toks.get(z).st) && "A".equals(group)) return null;
+                break;
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        boolean hasBad = false;
+        for (Tok tk : toks) {
+            if ("bad".equals(tk.st)) hasBad = true;
+            if (!"keep".equals(tk.st) && !"soft".equals(tk.st)) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append("keep".equals(tk.st) ? tk.t : tk.rep);
+        }
+        String core = RE_HEAD.matcher(RE_TAIL.matcher(sb.toString()).replaceAll("")).replaceAll("");
+        int syl = 0;
+        for (int c = 0; c < core.length(); c++) if (isSyl(core.charAt(c))) syl++;
+        if (syl < 2) return null;
+        String[] words = core.split(" ", -1);
+        if (DANGLING.contains(words[words.length - 1].replaceAll("[?]+$", ""))) return null;
+
+        String e = !emotion.isEmpty() ? emotion : ("A".equals(group) || !hasBad ? "care" : "angry");
+        if ("surprised".equals(e) && !RE_WOW.matcher(text).find()) e = "ask";
+        if ("angry".equals(e) && !addressed(core)) e = "frustrated";
+        List<String> out = new ArrayList<>();
+        switch (e) {
+            case "frustrated":
+                out.add(prefixed("아 ", core, "아", "하아", "하", "에휴", "어휴", "아오") + " ㅠㅠ");
+                out.add(core + (RE_ENDP.matcher(core).find() ? " " : "... ") + "너무 답답하다");
+                out.add(joined(core, "좀 쉬었다 해야겠다"));
+                break;
+            case "joke":
+                out.add(core + "ㅋㅋ");
+                out.add(prefixed("야 ", core) + "ㅋㅋ");
+                out.add(core + " ㅎㅎ");
+                break;
+            case "surprised":
+                out.add(prefixed("헐 ", core, "와", "대박"));
+                out.add(joined(core, "진짜 놀랐어"));
+                out.add(joined(core, "완전 신기하다"));
+                break;
+            case "ask":
+                out.add(core);
+                out.add(prefixed("근데 ", core));
+                out.add(joined(core, "궁금해서"));
+                break;
+            case "care":
+                out.add(core);
+                out.add(prefixed("있잖아, ", core));
+                out.add(core + " ㅎㅎ");
+                break;
+            default:
+                out.add(prefixed("아니 ", core, "아") + " ㅜㅜ");
+                out.add(joined(core, "나 좀 속상해"));
+                out.add(joined(core, "다음엔 조심해 줘"));
+        }
+        if ("P".equals(group)) out.set(1, joined(core, "joke".equals(e) ? "가족 얘기는 빼자ㅋㅋ" : "가족 얘기는 하지 말자"));
+        List<String> uniq = new ArrayList<>();
+        for (String x : out) if (!uniq.contains(x)) uniq.add(x);
+        return uniq;
+    }
+
+    private static List<String> mergeSuggestions(List<String> ctx, List<String> base) {
+        List<String> out = ctx == null ? new ArrayList<>() : new ArrayList<>(ctx);
+        for (String b : base) {
+            if (out.size() >= 3) break;
+            if (!out.contains(b)) out.add(b);
+        }
+        return out.size() > 3 ? new ArrayList<>(out.subList(0, 3)) : out;
+    }
+
     // ---------------- 결과 ----------------
     public static final class Match {
         public final String word, riskLevel, category, matched, type, description;
@@ -482,7 +653,8 @@ public final class Engine {
         List<String> words = new ArrayList<>();
         for (Match m : matches) if (!words.contains(m.word)) words.add(m.word);
         return new Result(true, top.riskLevel, top.level, words, top.category,
-                suggestionsFor(top.group, top.sg, emotion), top.level >= 1, top.word, EMOTION_LABEL.get(shown), matches);
+                mergeSuggestions(contextualSuggestions(text, matches, top.group, emotion), suggestionsFor(top.group, top.sg, emotion)),
+                top.level >= 1, top.word, EMOTION_LABEL.get(shown), matches);
     }
 
     // ---------------- 아주 작은 JSON 읽개 (words.json 전용) ----------------

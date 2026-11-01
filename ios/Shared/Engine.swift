@@ -77,6 +77,137 @@ final class Engine {
     private static let reAngry = re("화나|화난|빡치|빡쳐|열받|꺼져|닥쳐|죽을래|!")
     private static let reSurprised = re("헐|대박|\\?")
 
+    // MARK: 메시지 맞춤 순화
+    // "야이 개새끼야 너 때문에 약속 시간 늦었잖아" → "아니 너 때문에 약속 시간 늦었잖아 ㅜㅜ"
+    private static let intens = ["존나", "졸라", "존내", "존니", "좃나", "조낸"]
+    private static let intensSurf = ["존나", "졸라", "존내", "존니", "좃나", "조낸", "ㅈㄴ", "whssk"]
+    private static let interj = ["야", "이", "야이", "이런", "저런", "아오", "에이", "아씨", "저"]
+    private static let appearPred = ["생겼", "같이", "같아", "같다", "같네", "같은", "닮", "처럼"]
+    private static let dangling = ["진짜", "완전", "너무", "개", "좀", "왜", "너", "니", "넌", "진심", "약간", "되게", "엄청", "아주", "그냥"]
+    private static let edge: Set<Character> = Set("\"'“”‘’()[]{}<>.,!~…·:;")
+    private static let reTail = re("[\\s\\u00a0\\u3000ㅋㅎㅠㅜ.,!~…]+$")
+    private static let reHead = re("^[\\s\\u00a0\\u3000.,!~…]+")
+    private static let reEndP = re("[?!]$")
+    private static let reWow = re("헐|대박")
+    private static let reAddr = re("^(너|넌|널|니가|네가|니네|니도|니꺼|니거)")
+    private static let reAddrEnd = re("(냐|잖아|하지 ?마|해라|줄래|줘)[?!]*$")
+
+    private static func stripEdge(_ s: String) -> String {
+        var chars = Array(s)
+        while let f = chars.first, edge.contains(f) || f == "?" { chars.removeFirst() }
+        while let l = chars.last, edge.contains(l) { chars.removeLast() }
+        return String(chars)
+    }
+
+    private static func replaced(_ r: NSRegularExpression, _ s: String) -> String {
+        r.stringByReplacingMatches(in: s, range: NSRange(location: 0, length: s.utf16.count), withTemplate: "")
+    }
+
+    private static func prefixed(_ p: String, _ c: String, _ alts: [String] = []) -> String {
+        var first = c.components(separatedBy: " ").first ?? ""
+        while first.hasSuffix(",") { first.removeLast() }
+        var head = p
+        while head.hasSuffix(" ") || head.hasSuffix(",") { head.removeLast() }
+        return ([head] + alts).contains(first) ? c : p + c
+    }
+
+    private static func joined(_ c: String, _ tail: String) -> String {
+        found(reEndP, c) ? c + " " + tail : c + ". " + tail
+    }
+
+    /// 상대에게 하는 말인지 (너/넌/니가/네가 …, 따지거나 부탁하는 말끝)
+    private static func addressed(_ c: String) -> Bool {
+        c.components(separatedBy: " ").contains { found(reAddr, $0) } || found(reAddrEnd, c)
+    }
+
+    /// 보내려던 메시지에서 공격적인 말만 빼고 다듬은 문장들. 문장이 성립하지 않으면 nil
+    private static func contextual(_ u: [UInt16], _ text: String, _ matches: [Match], _ group: String, _ emotion: String) -> [String]? {
+        struct Tok { let s: Int, e: Int, t: String; var st = "keep", rep = "" }
+        var toks: [Tok] = []
+        var i = 0
+        let n = u.count
+        while i < n {
+            while i < n && spaceChars.contains(u[i]) { i += 1 }
+            if i >= n { break }
+            let s = i
+            while i < n && !spaceChars.contains(u[i]) { i += 1 }
+            toks.append(Tok(s: s, e: i, t: String(utf16CodeUnits: Array(u[s..<i]), count: i - s)))
+        }
+        for k in toks.indices {
+            for m in matches {
+                if !(m.start < toks[k].e && toks[k].s < m.end) || toks[k].st == "bad" { continue }
+                if m.start >= toks[k].s && m.end <= toks[k].e && intens.contains(m.matched) {
+                    let core = stripEdge(toks[k].t)
+                    let low = core.lowercased()
+                    var rep = "진짜"
+                    for p in intensSurf where low.hasPrefix(p) {
+                        let rest = String(core.dropFirst(p.count))
+                        rep = rest.isEmpty ? "진짜" : "진짜 " + rest
+                        break
+                    }
+                    toks[k].st = "soft"
+                    toks[k].rep = rep
+                } else {
+                    toks[k].st = "bad"
+                }
+            }
+        }
+        var incomplete = false
+        for k in toks.indices where toks[k].st == "bad" {
+            var j = k - 1
+            while j >= 0 && toks[j].st == "keep" && interj.contains(stripEdge(toks[j].t)) {
+                toks[j].st = "drop"
+                j -= 1
+            }
+            if k + 1 < toks.count && toks[k + 1].st == "keep" {
+                let nt = stripEdge(toks[k + 1].t)
+                if appearPred.contains(where: { nt.hasPrefix($0) }) {
+                    toks[k + 1].st = "drop"
+                    incomplete = true
+                }
+            }
+        }
+        if incomplete { return nil }
+        if let last = toks.last(where: { !stripEdge($0.t).isEmpty }), last.st == "bad", group == "A" { return nil }
+        let parts = toks.filter { $0.st == "keep" || $0.st == "soft" }.map { $0.st == "keep" ? $0.t : $0.rep }
+        let core = replaced(reHead, replaced(reTail, parts.joined(separator: " ")))
+        if core.utf16.filter({ isSyl($0) }).count < 2 { return nil }
+        var lastWord = core.components(separatedBy: " ").last ?? ""
+        while lastWord.hasSuffix("?") { lastWord.removeLast() }
+        if dangling.contains(lastWord) { return nil }
+
+        let hasBad = toks.contains { $0.st == "bad" }
+        var e = !emotion.isEmpty ? emotion : (group == "A" || !hasBad ? "care" : "angry")
+        if e == "surprised" && !found(reWow, text) { e = "ask" }
+        if e == "angry" && !addressed(core) { e = "frustrated" }
+        var out: [String]
+        switch e {
+        case "frustrated":
+            out = [prefixed("아 ", core, ["아", "하아", "하", "에휴", "어휴", "아오"]) + " ㅠㅠ",
+                   core + (found(reEndP, core) ? " " : "... ") + "너무 답답하다", joined(core, "좀 쉬었다 해야겠다")]
+        case "joke":
+            out = [core + "ㅋㅋ", prefixed("야 ", core) + "ㅋㅋ", core + " ㅎㅎ"]
+        case "surprised":
+            out = [prefixed("헐 ", core, ["와", "대박"]), joined(core, "진짜 놀랐어"), joined(core, "완전 신기하다")]
+        case "ask":
+            out = [core, prefixed("근데 ", core), joined(core, "궁금해서")]
+        case "care":
+            out = [core, prefixed("있잖아, ", core), core + " ㅎㅎ"]
+        default:
+            out = [prefixed("아니 ", core, ["아"]) + " ㅜㅜ", joined(core, "나 좀 속상해"), joined(core, "다음엔 조심해 줘")]
+        }
+        if group == "P" { out[1] = joined(core, e == "joke" ? "가족 얘기는 빼자ㅋㅋ" : "가족 얘기는 하지 말자") }
+        var uniq: [String] = []
+        for x in out where !uniq.contains(x) { uniq.append(x) }
+        return uniq
+    }
+
+    private static func merge(_ ctx: [String]?, _ base: [String]) -> [String] {
+        var out = ctx ?? []
+        for b in base where out.count < 3 && !out.contains(b) { out.append(b) }
+        return Array(out.prefix(3))
+    }
+
     // MARK: 사전
     private final class Node {
         var next: [UInt16: Node] = [:]
@@ -368,7 +499,9 @@ final class Engine {
         var words: [String] = []
         for m in matches where !words.contains(m.word) { words.append(m.word) }
         return Result(isHarmful: true, riskLevel: top.riskLevel, level: top.level, detectedWords: words,
-                      category: top.category, suggestions: Engine.suggestions(group: top.group, sg: top.sg, emotion: emo),
+                      category: top.category,
+                      suggestions: Engine.merge(Engine.contextual(u, text, matches, top.group, emo),
+                                                Engine.suggestions(group: top.group, sg: top.sg, emotion: emo)),
                       showOverlay: top.level >= 1, highlightTarget: top.word, emotion: Engine.emotionLabel[shown],
                       matches: matches)
     }

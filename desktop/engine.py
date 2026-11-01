@@ -33,6 +33,137 @@ SUGGEST = {
     "idol": ["너는 너만의 분위기가 있어", "너 그 노래 진짜 잘 부르더라", "주말에 무대 영상 같이 볼래?"],
 }
 PARTICLES = "아야이가는은을를들"
+
+# ---------- 메시지 맞춤 순화 ----------
+# "야이 개새끼야 너 때문에 약속 시간 늦었잖아" → "아니 너 때문에 약속 시간 늦었잖아 ㅜㅜ"
+INTENS = ["존나", "졸라", "존내", "존니", "좃나", "조낸"]
+INTENS_SURF = ["존나", "졸라", "존내", "존니", "좃나", "조낸", "ㅈㄴ", "whssk"]
+INTERJ = ["야", "이", "야이", "이런", "저런", "아오", "에이", "아씨", "저"]
+APPEAR_PRED = ["생겼", "같이", "같아", "같다", "같네", "같은", "닮", "처럼"]
+DANGLING = ["진짜", "완전", "너무", "개", "좀", "왜", "너", "니", "넌", "진심", "약간", "되게", "엄청", "아주", "그냥"]
+EDGE = "\"'“”‘’()[]{}<>.,!~…·:;"
+RE_TAIL = re.compile(r"[\sㅋㅎㅠㅜ.,!~…]+$")
+RE_HEAD = re.compile(r"^[\s.,!~…]+")
+RE_ENDP = re.compile(r"[?!]$")
+RE_WOW = re.compile(r"헐|대박")
+
+
+def _strip_edge(s):
+    a, b = 0, len(s)
+    while a < b and (s[a] in EDGE or s[a] == "?"):
+        a += 1
+    while b > a and s[b - 1] in EDGE:
+        b -= 1
+    return s[a:b]
+
+
+def _prefixed(p, c, alts=()):
+    first = c.split(" ")[0].rstrip(",")
+    if first in [p.rstrip(" ,")] + list(alts):
+        return c
+    return p + c
+
+
+RE_ADDR = re.compile(r"^(너|넌|널|니가|네가|니네|니도|니꺼|니거)")
+RE_ADDR_END = re.compile(r"(냐|잖아|하지 ?마|해라|줄래|줘)[?!]*$")  # 따지거나 부탁하는 말끝
+
+
+def _addressed(c):
+    """상대에게 하는 말인지 (너/넌/니가/네가 …)"""
+    return any(RE_ADDR.search(w) for w in c.split(" ")) or bool(RE_ADDR_END.search(c))
+
+
+def _joined(c, tail):
+    return c + " " + tail if RE_ENDP.search(c) else c + ". " + tail
+
+
+def contextual_suggestions(text, matches, group, emotion):
+    """보내려던 메시지에서 공격적인 말만 빼고 다듬은 문장들. 문장이 성립하지 않으면 None"""
+    toks, i, n = [], 0, len(text)
+    while i < n:
+        while i < n and text[i] in SPACES:
+            i += 1
+        if i >= n:
+            break
+        s = i
+        while i < n and text[i] not in SPACES:
+            i += 1
+        toks.append({"s": s, "e": i, "t": text[s:i], "st": "keep", "rep": ""})
+    for tk in toks:
+        for m in matches:
+            if not (m["start"] < tk["e"] and tk["s"] < m["end"]) or tk["st"] == "bad":
+                continue
+            if m["start"] >= tk["s"] and m["end"] <= tk["e"] and m["matched"] in INTENS:
+                core = _strip_edge(tk["t"])
+                low, rep = core.lower(), "진짜"
+                for p in INTENS_SURF:
+                    if low.startswith(p):
+                        rest = core[len(p):]
+                        rep = "진짜 " + rest if rest else "진짜"
+                        break
+                tk["st"], tk["rep"] = "soft", rep
+            else:
+                tk["st"] = "bad"
+    incomplete = False
+    for k, tk in enumerate(toks):
+        if tk["st"] != "bad":
+            continue
+        j = k - 1
+        while j >= 0 and toks[j]["st"] == "keep" and _strip_edge(toks[j]["t"]) in INTERJ:
+            toks[j]["st"] = "drop"
+            j -= 1
+        if k + 1 < len(toks) and toks[k + 1]["st"] == "keep":
+            nt = _strip_edge(toks[k + 1]["t"])
+            if any(nt.startswith(p) for p in APPEAR_PRED):
+                toks[k + 1]["st"] = "drop"
+                incomplete = True
+    if incomplete:
+        return None
+    last = next((tk for tk in reversed(toks) if _strip_edge(tk["t"])), None)
+    if last is not None and last["st"] == "bad" and group == "A":
+        return None
+    parts = [tk["t"] if tk["st"] == "keep" else tk["rep"] for tk in toks if tk["st"] in ("keep", "soft")]
+    core = RE_HEAD.sub("", RE_TAIL.sub("", " ".join(parts)))
+    if sum(1 for ch in core if _syl(ch)) < 2:
+        return None
+    if core.split(" ")[-1].rstrip("?") in DANGLING:
+        return None
+    has_bad = any(tk["st"] == "bad" for tk in toks)
+    e = emotion or ("care" if group == "A" or not has_bad else "angry")
+    if e == "surprised" and not RE_WOW.search(text):
+        e = "ask"
+    if e == "angry" and not _addressed(core):
+        e = "frustrated"
+    if e == "frustrated":
+        out = [_prefixed("아 ", core, ["아", "하아", "하", "에휴", "어휴", "아오"]) + " ㅠㅠ",
+               core + (" " if RE_ENDP.search(core) else "... ") + "너무 답답하다", _joined(core, "좀 쉬었다 해야겠다")]
+    elif e == "joke":
+        out = [core + "ㅋㅋ", _prefixed("야 ", core) + "ㅋㅋ", core + " ㅎㅎ"]
+    elif e == "surprised":
+        out = [_prefixed("헐 ", core, ["와", "대박"]), _joined(core, "진짜 놀랐어"), _joined(core, "완전 신기하다")]
+    elif e == "ask":
+        out = [core, _prefixed("근데 ", core), _joined(core, "궁금해서")]
+    elif e == "care":
+        out = [core, _prefixed("있잖아, ", core), core + " ㅎㅎ"]
+    else:
+        out = [_prefixed("아니 ", core, ["아"]) + " ㅜㅜ", _joined(core, "나 좀 속상해"), _joined(core, "다음엔 조심해 줘")]
+    if group == "P":
+        out[1] = _joined(core, "가족 얘기는 빼자ㅋㅋ" if e == "joke" else "가족 얘기는 하지 말자")
+    uniq = []
+    for x in out:
+        if x not in uniq:
+            uniq.append(x)
+    return uniq
+
+
+def merge_suggestions(ctx, base):
+    out = list(ctx or [])
+    for b in base:
+        if len(out) >= 3:
+            break
+        if b not in out:
+            out.append(b)
+    return out[:3]
 EMOTION_LABEL = {"joke": "장난", "frustrated": "답답함", "angry": "화남", "surprised": "놀람", "care": "관심"}
 
 RE_LAUGH = re.compile(r"[ㅋㅎ]{2,}|lol|\^\^", re.I)
@@ -301,7 +432,8 @@ class Engine:
             "risk_level": top["risk_level"],
             "detected_words": words,
             "category": top["category"],
-            "suggestions": self._suggestions(top["group"], top["sg"], emotion),
+            "suggestions": merge_suggestions(contextual_suggestions(text, matches, top["group"], emotion),
+                                             self._suggestions(top["group"], top["sg"], emotion)),
             "pc_ui_action": {"show_overlay": top["level"] >= 1, "highlight_target": top["word"]},
             "emotion": EMOTION_LABEL[shown],
             "matches": [{k: m[k] for k in ("word", "start", "end", "risk_level", "category", "matched", "type", "description")}

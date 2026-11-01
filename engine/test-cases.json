@@ -47,5 +47,9 @@
   {"in":"우리 강아지 새끼 낳았어","risk":"NONE","words":[]},
   {"in":"시발 점심 또 급식이야","risk":"CRITICAL","words":["시발"]},
   {"in":"야 이 씨 발 련 아 너","risk":"CRITICAL","words":["씨 발 련 아"]},
+  {"in":"야이 개새끼야 너 때문에 약속 시간 늦었잖아","risk":"CRITICAL","words":["개새끼야"],"sug0":"아니 너 때문에 약속 시간 늦었잖아 ㅜㅜ"},
+  {"in":"존나 웃기네ㅋㅋ","risk":"HIGH","words":["존나"],"sug0":"진짜 웃기네ㅋㅋ"},
+  {"in":"병신아 숙제 언제 낼 거야?","risk":"CRITICAL","words":["병신아"],"sug0":"숙제 언제 낼 거야?"},
+  {"in":"씨발련아","risk":"CRITICAL","words":["씨발련아"],"sug0":"너 때문에 정말 속상하고 화가 나"},
   {"in":"","risk":"NONE","words":[]}
 ]

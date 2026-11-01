@@ -44,6 +44,15 @@
   };
 
   var PARTICLES = "아야이가는은을를들";
+
+  // ---------- 메시지 맞춤 순화 ----------
+  // "야이 개새끼야 너 때문에 약속 시간 늦었잖아" → "아니 너 때문에 약속 시간 늦었잖아 ㅜㅜ"
+  var INTENS = ["존나", "졸라", "존내", "존니", "좃나", "조낸"];          // 강조로 쓰인 비속어 → "진짜"
+  var INTENS_SURF = ["존나", "졸라", "존내", "존니", "좃나", "조낸", "ㅈㄴ", "whssk"];
+  var INTERJ = ["야", "이", "야이", "이런", "저런", "아오", "에이", "아씨", "저"]; // 욕 바로 앞의 부르는 말
+  var APPEAR_PRED = ["생겼", "같이", "같아", "같다", "같네", "같은", "닮", "처럼"]; // 외모 비하 뒤에 붙는 서술어
+  var DANGLING = ["진짜", "완전", "너무", "개", "좀", "왜", "너", "니", "넌", "진심", "약간", "되게", "엄청", "아주", "그냥"];
+  var EDGE = "\"'“”‘’()[]{}<>.,!~…·:;";
   var EMOTION_LABEL = { joke: "장난", frustrated: "답답함", angry: "화남", surprised: "놀람", care: "관심" };
 
   var RE_LAUGH = /[ㅋㅎ]{2,}|lol|\^\^/i;
@@ -212,6 +221,105 @@
       return set;
     }
 
+    function stripEdge(s) {
+      var a = 0, b = s.length;
+      while (a < b && (EDGE.indexOf(s[a]) >= 0 || s[a] === "?")) a++;
+      while (b > a && EDGE.indexOf(s[b - 1]) >= 0) b--;
+      return s.slice(a, b);
+    }
+    function hangulCount(s) { var n = 0; for (var i = 0; i < s.length; i++) if (isSyl(s[i])) n++; return n; }
+    function startsWithWord(c, w) { return c.indexOf(w) === 0; }
+    /** 문장 앞에 말을 붙이되, 이미 비슷한 말로 시작하면 그대로 둔다 */
+    function prefixed(p, c, alts) {
+      var first = c.split(" ")[0].replace(/,+$/, "");
+      var all = [p.replace(/[ ,]+$/, "")].concat(alts || []);
+      for (var i = 0; i < all.length; i++) if (first === all[i]) return c;
+      return p + c;
+    }
+    /** 상대에게 하는 말인지 (너/넌/니가/네가 …) */
+    function addressed(c) {
+      var w = c.split(" ");
+      for (var i = 0; i < w.length; i++) {
+        if (/^(너|넌|널|니가|네가|니네|니도|니꺼|니거)/.test(w[i])) return true;
+      }
+      return /(냐|잖아|하지 ?마|해라|줄래|줘)[?!]*$/.test(c);   // 따지거나 부탁하는 말끝
+    }
+    function joined(c, tail) { return /[?!]$/.test(c) ? c + " " + tail : c + ". " + tail; }
+
+    /** 보내려던 메시지에서 공격적인 말만 빼고 다듬은 문장 3개. 문장이 성립하지 않으면 null */
+    function contextualSuggestions(text, matches, group, emotion) {
+      var toks = [], i = 0, n = text.length;
+      while (i < n) {
+        while (i < n && isSpace(text[i])) i++;
+        if (i >= n) break;
+        var s = i;
+        while (i < n && !isSpace(text[i])) i++;
+        toks.push({ s: s, e: i, t: text.slice(s, i), st: "keep", rep: "" });
+      }
+      toks.forEach(function (tk) {
+        matches.forEach(function (m) {
+          if (!(m.start < tk.e && tk.s < m.end) || tk.st === "bad") return;
+          if (m.start >= tk.s && m.end <= tk.e && INTENS.indexOf(m.matched) >= 0) {
+            var core = stripEdge(tk.t), low = core.toLowerCase(), rep = "진짜";
+            for (var p = 0; p < INTENS_SURF.length; p++) {
+              if (low.indexOf(INTENS_SURF[p]) === 0) {
+                var rest = core.slice(INTENS_SURF[p].length);
+                rep = rest ? "진짜 " + rest : "진짜";
+                break;
+              }
+            }
+            tk.st = "soft";
+            tk.rep = rep;
+          } else {
+            tk.st = "bad";
+          }
+        });
+      });
+      var incomplete = false;
+      for (var k = 0; k < toks.length; k++) {
+        if (toks[k].st !== "bad") continue;
+        for (var j = k - 1; j >= 0 && toks[j].st === "keep" && INTERJ.indexOf(stripEdge(toks[j].t)) >= 0; j--) toks[j].st = "drop";
+        var nx = toks[k + 1];
+        if (nx && nx.st === "keep") {
+          var nt = stripEdge(nx.t);
+          for (var q = 0; q < APPEAR_PRED.length; q++) if (nt.indexOf(APPEAR_PRED[q]) === 0) { nx.st = "drop"; incomplete = true; break; }
+        }
+      }
+      if (incomplete) return null;
+      var lastIdx = -1;
+      for (var z = toks.length - 1; z >= 0; z--) if (stripEdge(toks[z].t)) { lastIdx = z; break; }
+      if (lastIdx >= 0 && toks[lastIdx].st === "bad" && group === "A") return null;
+      var parts = [];
+      toks.forEach(function (tk) { if (tk.st === "keep") parts.push(tk.t); else if (tk.st === "soft") parts.push(tk.rep); });
+      var core = parts.join(" ").replace(/[\sㅋㅎㅠㅜ.,!~…]+$/, "").replace(/^[\s.,!~…]+/, "");
+      if (hangulCount(core) < 2) return null;
+      var words = core.split(" ");
+      if (DANGLING.indexOf(words[words.length - 1].replace(/[?]+$/, "")) >= 0) return null;
+
+      var hasBad = toks.some(function (tk) { return tk.st === "bad"; });
+      var e = emotion || (group === "A" || !hasBad ? "care" : "angry");
+      if (e === "surprised" && !/헐|대박/.test(text)) e = "ask";   // 물음표만 있으면 놀람이 아니라 질문
+      if (e === "angry" && !addressed(core)) e = "frustrated";      // 혼잣말 욕은 화풀이보다 답답함
+      var out;
+      if (e === "frustrated") out = [prefixed("아 ", core, ["아", "하아", "하", "에휴", "어휴", "아오"]) + " ㅠㅠ", core + (/[?!]$/.test(core) ? " " : "... ") + "너무 답답하다", joined(core, "좀 쉬었다 해야겠다")];
+      else if (e === "joke") out = [core + "ㅋㅋ", prefixed("야 ", core) + "ㅋㅋ", core + " ㅎㅎ"];
+      else if (e === "surprised") out = [prefixed("헐 ", core, ["와", "대박"]), joined(core, "진짜 놀랐어"), joined(core, "완전 신기하다")];
+      else if (e === "ask") out = [core, prefixed("근데 ", core), joined(core, "궁금해서")];
+      else if (e === "care") out = [core, prefixed("있잖아, ", core), core + " ㅎㅎ"];
+      else out = [prefixed("아니 ", core, ["아"]) + " ㅜㅜ", joined(core, "나 좀 속상해"), joined(core, "다음엔 조심해 줘")];
+      if (group === "P") out[1] = joined(core, e === "joke" ? "가족 얘기는 빼자ㅋㅋ" : "가족 얘기는 하지 말자");
+      var uniq = [];
+      out.forEach(function (x) { if (uniq.indexOf(x) < 0) uniq.push(x); });
+      return uniq;
+    }
+
+    /** 메시지 맞춤 순화안을 먼저, 모자라면 기본 순화안으로 3개를 채운다 */
+    function mergeSuggestions(ctx, base) {
+      var out = (ctx || []).slice();
+      for (var i = 0; i < base.length && out.length < 3; i++) if (out.indexOf(base[i]) < 0) out.push(base[i]);
+      return out.slice(0, 3);
+    }
+
     function analyzeDetailed(input) {
       var text = String(input == null ? "" : input).normalize("NFC");
       var norm = normalize(text, variants);
@@ -292,7 +400,7 @@
         risk_level: top.risk_level,
         detected_words: words,
         category: top.category,
-        suggestions: suggestionsFor({ group: top.group, sg: top.sg }, emotion),
+        suggestions: mergeSuggestions(contextualSuggestions(text, matches, top.group, emotion), suggestionsFor({ group: top.group, sg: top.sg }, emotion)),
         pc_ui_action: { show_overlay: top.level >= 1, highlight_target: top.word },
         emotion: EMOTION_LABEL[shownEmotion],
         matches: matches.map(function (m) {
