@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -26,6 +29,18 @@ jobs:
         with:
           name: hanbeonde-windows
           path: desktop/dist/Hanbeonde.exe
+
+      - name: 릴리스에 올리기
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          gh release view windows --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create windows --repo "$GITHUB_REPOSITORY" --title "한 번 더 윈도우 앱 + 크롬 확장" --notes "Hanbeonde.exe: 카카오톡 PC 등 PC 메신저용 트레이 앱. hanbeonde-chrome-extension.zip: 압축을 풀고 chrome://extensions 에서 '압축해제된 확장 프로그램을 로드'로 설치."
+          gh release upload windows desktop/dist/Hanbeonde.exe --clobber --repo "$GITHUB_REPOSITORY"
+          cd chrome-extension && 7z a ../hanbeonde-chrome-extension.zip . >/dev/null && cd ..
+          gh release upload windows hanbeonde-chrome-extension.zip --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   extension:
     runs-on: ubuntu-latest

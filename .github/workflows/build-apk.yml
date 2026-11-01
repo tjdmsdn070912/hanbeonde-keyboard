@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -28,3 +31,13 @@ jobs:
         with:
           name: hanbeonde-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: 릴리스에 올리기 (휴대폰에서 바로 내려받기)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk Hanbeonde.apk
+          gh release view android --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create android --repo "$GITHUB_REPOSITORY" --title "한 번 더 안드로이드 키보드" --notes "최신 main 기준으로 자동으로 만든 APK예요. 휴대폰에서 Hanbeonde.apk 를 눌러 내려받아 설치하세요."
+          gh release upload android Hanbeonde.apk --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
