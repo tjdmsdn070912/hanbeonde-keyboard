@@ -1,0 +1,38 @@
+name: 윈도우 앱 만들기
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 필요한 패키지 설치
+        run: pip install -r desktop/requirements.txt pyinstaller
+
+      - name: exe 빌드
+        working-directory: desktop
+        run: pyinstaller --noconfirm --onefile --windowed --name Hanbeonde --hidden-import pystray._win32 --add-data "words.json;." --add-data "web;web" hanbeonde_tray.py
+
+      - name: exe 올리기
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanbeonde-windows
+          path: desktop/dist/Hanbeonde.exe
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 크롬 확장 올리기
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanbeonde-chrome-extension
+          path: chrome-extension/

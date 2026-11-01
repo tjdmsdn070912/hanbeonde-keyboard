@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한 번 더 PC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: 왼쪽 세로 메뉴 + 오른쪽 작업 화면 (데스크톱 앱 형태, 한 화면 고정) */
+:root{
+  --ink:#16201e; --ink-2:#4d5a57; --ink-3:#7c8784;
+  --bg:#eef2f1; --surface:#ffffff; --line:#d8e0de; --side:#13201e;
+  --accent:#0e6b63; --accent-soft:#dcefec;
+  --critical:#c62828; --critical-soft:#fdeaea;
+  --high:#d9480f; --high-soft:#fff0e6;
+  --medium:#b7791f; --medium-soft:#fdf5e3;
+  --low:#5f6f6b; --low-soft:#eef1f0;
+  --series-1:#2a78d6; --series-2:#eb6834;
+  --font-display:"Do Hyeon","IBM Plex Sans KR",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;font-size:14px}
+button{font:inherit;cursor:pointer;color:inherit}
+button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:grid;grid-template-columns:220px 1fr;height:100%;min-height:600px}
+.side{background:var(--side);color:#cfdad7;display:flex;flex-direction:column;padding:22px 14px}
+.logo{font-family:var(--font-display);font-size:30px;color:#fff;letter-spacing:-.5px;padding:0 8px}
+.logo small{display:block;font-family:var(--font-body);font-size:12px;color:#8fa5a0;letter-spacing:0;margin-top:2px}
+.nav{display:flex;flex-direction:column;gap:3px;margin-top:26px}
+.nav button{display:flex;gap:10px;align-items:center;border:0;background:none;padding:10px 10px;border-radius:9px;text-align:left;color:#b8c7c3;font-size:14px}
+.nav button svg{width:18px;height:18px;flex:none}
+.nav button:hover{background:rgba(255,255,255,.06)}
+.nav button[aria-current="page"]{background:rgba(124,214,200,.14);color:#fff}
+.side-foot{margin-top:auto;font-size:12px;line-height:1.6;color:#8fa5a0;padding:0 8px;display:grid;gap:10px}
+.toggle-row{display:flex;justify-content:space-between;align-items:center;color:#cfdad7;font-size:13px}
+.switch{position:relative;width:38px;height:22px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.switch span{position:absolute;inset:0;background:#4a5a57;border-radius:999px;transition:background .15s}
+.switch span::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:3px;left:3px;transition:transform .15s}
+.switch input:checked+span{background:#2fa595}
+.switch input:checked+span::after{transform:translateX(16px)}
+.switch input:focus-visible+span{outline:2px solid #7cd6c8;outline-offset:2px}
+
+main{min-width:0;overflow:auto}
+.view{display:none;padding:26px 30px 30px;min-height:100%}
+.view.on{display:flex;flex-direction:column;gap:16px}
+.head h1{margin:0;font-size:22px;letter-spacing:-.3px;text-wrap:balance}
+.head p{margin:4px 0 0;color:var(--ink-2);max-width:72ch;line-height:1.55}
+
+.dash-head{display:flex;gap:16px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
+.rec{display:flex;gap:8px}
+.rec button{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font-size:12.5px;color:var(--ink-2)}
+.rec button:hover{border-color:var(--accent);color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px}
+
+/* 위험도 뱃지 */
+.badge{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12px;padding:4px 10px;border-radius:999px;letter-spacing:.3px}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.lv-CRITICAL{color:var(--critical);background:var(--critical-soft)}
+.lv-HIGH{color:var(--high);background:var(--high-soft)}
+.lv-MEDIUM{color:var(--medium);background:var(--medium-soft)}
+.lv-LOW{color:var(--low);background:var(--low-soft)}
+.lv-NONE{color:var(--accent);background:var(--accent-soft)}
+
+/* 하이라이트 입력칸 (textarea 뒤에 같은 글자를 깔고 감지 부분만 칠한다) */
+.hl{position:relative}
+.hl .back,.hl textarea{font:inherit;letter-spacing:0;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;margin:0;border:0}
+.hl .back{position:absolute;inset:0;color:transparent;pointer-events:none;overflow:hidden}
+.hl .back mark{color:transparent;border-radius:3px;text-decoration:underline wavy;text-decoration-thickness:1.5px;text-underline-offset:4px}
+.hl .back mark.CRITICAL{background:rgba(198,40,40,.16);text-decoration-color:var(--critical)}
+.hl .back mark.HIGH{background:rgba(217,72,15,.14);text-decoration-color:var(--high)}
+.hl .back mark.MEDIUM{background:rgba(183,121,31,.15);text-decoration-color:var(--medium)}
+.hl .back mark.LOW{background:rgba(95,111,107,.12);text-decoration-color:var(--low)}
+.hl textarea{position:relative;display:block;width:100%;background:transparent;resize:none;outline:none;color:var(--ink)}
+
+/* 1. 텍스트 검사기 */
+.checker{display:grid;grid-template-rows:1fr auto;flex:1;min-height:520px;overflow:hidden}
+.editor-bar{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);color:var(--ink-3);font-size:12.5px}
+.editor-bar .samples{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.sample{border:1px solid var(--line);background:#f7faf9;border-radius:999px;padding:4px 10px;font-size:12px;color:var(--ink-2)}
+.sample:hover{border-color:var(--accent);color:var(--accent)}
+.editor{display:flex;flex-direction:column;min-height:0}
+.editor .hl{flex:1;min-height:0}
+.editor .hl .back,.editor .hl textarea{padding:22px 26px;font-size:17px;line-height:1.75}
+.editor .hl textarea{height:100%;min-height:200px}
+.panel{border-top:1px solid var(--line);background:#fafcfb;padding:14px 18px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px;border-radius:0 0 14px 14px}
+.panel h3{margin:0 0 8px;font-size:12px;color:var(--ink-3);font-weight:500;letter-spacing:.2px}
+.status-line{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.status-line .cat{font-weight:700}
+.status-line .emo{color:var(--ink-2);font-size:13px}
+.found{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.found .w{border-radius:6px;padding:3px 8px;font-size:13px;font-weight:500}
+.found .w small{font-weight:400;opacity:.8;margin-left:4px}
+.desc{font-size:12.5px;color:var(--ink-2);margin-top:8px;line-height:1.55}
+.swaps{display:grid;gap:7px}
+.swap{display:flex;justify-content:space-between;gap:10px;align-items:center;text-align:left;border:1.5px solid var(--accent-soft);background:#f4faf9;border-radius:10px;padding:9px 12px;font-size:14px}
+.swap:hover{border-color:var(--accent)}
+.swap b{font-size:12px;color:var(--accent);flex:none}
+.json-toggle{margin-top:10px;border:0;background:none;color:var(--accent);font-size:12.5px;padding:0;font-weight:500}
+pre.json{margin:8px 0 0;background:#0f1a18;color:#d6e6e2;font-family:var(--font-mono);font-size:12px;line-height:1.55;padding:12px 14px;border-radius:10px;max-height:220px;overflow:auto}
+.safe-note{color:var(--ink-2);font-size:13.5px;line-height:1.6}
+
+/* 2. 메신저 + 오버레이 위젯 */
+.desk{flex:1;min-height:540px;display:grid;grid-template-columns:240px 1fr;overflow:hidden;position:relative}
+.rooms{border-right:1px solid var(--line);background:#f6f8f8;border-radius:14px 0 0 14px;padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+.rooms .t{font-size:12px;color:var(--ink-3);padding:4px 10px 8px}
+.room{display:grid;grid-template-columns:36px 1fr;gap:10px;align-items:center;padding:8px 10px;border-radius:10px}
+.room.on{background:#e3ebe9}
+.room .av{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px}
+.room b{font-size:13.5px;display:block}
+.room span{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.chat{display:flex;flex-direction:column;min-width:0;min-height:0}
+.chat-top{padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.chat-top b{font-size:15px}
+.chat-top .pill{margin-left:auto;font-size:12px;color:var(--accent);background:var(--accent-soft);padding:4px 10px;border-radius:999px}
+.msgs{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:10px;background:#f3f6f5;min-height:0}
+.m{display:flex;gap:9px;max-width:70%}
+.m .av{width:30px;height:30px;border-radius:9px;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.m .who{font-size:12px;color:var(--ink-3);margin-bottom:3px}
+.m .bub{background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:4px 12px 12px 12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.m.me{align-self:flex-end;flex-direction:row-reverse}
+.m.me .bub{background:var(--accent);border-color:var(--accent);color:#fff;border-radius:12px 4px 12px 12px}
+.m.me .bub.kept{background:#5d6966;border-color:#5d6966}
+.m .note{font-size:11.5px;color:var(--ink-3);text-align:right;margin-top:3px}
+.composer{border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:10px;align-items:flex-end;position:relative;border-radius:0 0 14px 0}
+.composer .hl{flex:1;border:1px solid var(--line);border-radius:10px;background:#fff}
+.composer .hl .back,.composer .hl textarea{padding:10px 12px;font-size:15px;line-height:1.5}
+.composer .hl textarea{max-height:120px;overflow-y:auto}
+.composer .hint{position:absolute;left:16px;top:-22px;font-size:11.5px;color:var(--ink-3)}
+.send{border:0;background:var(--accent);color:#fff;border-radius:10px;padding:10px 18px;font-weight:700}
+.send:disabled{background:#a7b3b0}
+
+.overlay{position:absolute;right:120px;bottom:72px;width:380px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 40px -12px rgba(10,30,26,.35);padding:14px 16px 14px;display:none;z-index:5}
+.overlay.on{display:block;animation:pop .16s ease-out}
+@keyframes pop{from{transform:translateY(8px);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.overlay.on{animation:none}}
+.overlay::after{content:"";position:absolute;bottom:-7px;right:40px;width:12px;height:12px;background:#fff;border-right:1px solid var(--line);border-bottom:1px solid var(--line);transform:rotate(45deg)}
+.ov-top{display:flex;align-items:center;gap:8px}
+.ov-top strong{font-size:15px}
+.ov-top .x{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:18px;line-height:1;padding:2px 4px}
+.ov-sub{font-size:12.5px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5}
+.ov-sub mark{background:none;font-weight:700;color:var(--critical)}
+.chips{display:flex;flex-direction:column;gap:6px}
+.chip{border:1px solid #bcd9d4;background:#f2faf8;color:var(--accent);border-radius:999px;padding:7px 13px;font-size:13.5px;text-align:left}
+.chip:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ov-actions{display:flex;gap:8px;margin-top:10px}
+.ov-actions button{flex:1;border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px;font-size:13px}
+.ov-actions .ghost{color:var(--ink-2)}
+.kbd{font-family:var(--font-mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:#fff;color:var(--ink-2)}
+
+/* 3. 대시보드 */
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{padding:16px 18px}
+.kpi .k{font-size:12.5px;color:var(--ink-2)}
+.kpi .v{font-size:30px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.kpi .s{font-size:12.5px;color:var(--ink-3);margin-top:2px}
+.kpi .s.good{color:var(--accent)}
+.grid2{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:12px}
+.box{padding:16px 18px}
+.box h2{margin:0 0 4px;font-size:15px}
+.box .sub{font-size:12.5px;color:var(--ink-3);margin:0 0 12px}
+.legend{display:flex;gap:16px;font-size:12.5px;color:var(--ink-2);margin-bottom:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--font-body);font-size:11px;fill:var(--ink-3)}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;line-height:1.5;padding:7px 10px;border-radius:8px;transform:translate(-50%,-100%);white-space:nowrap;display:none}
+.rank{display:flex;flex-direction:column;gap:9px}
+.rank .r{display:grid;grid-template-columns:20px minmax(0,1fr) 120px 40px;gap:10px;align-items:center;font-size:13.5px}
+.rank .r .n{color:var(--ink-3);font-variant-numeric:tabular-nums}
+.rank .r .w{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank .bar{height:8px;background:#edf1f0;border-radius:4px;overflow:hidden}
+.rank .bar span{display:block;height:100%;border-radius:0 4px 4px 0}
+.rank .c{text-align:right;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.levels{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.levels div{border-radius:10px;padding:9px 10px;font-size:12px}
+.levels b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+.missions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.mission{padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.mission .t{font-weight:700;font-size:14px}
+.mission .d{font-size:12.5px;color:var(--ink-2);line-height:1.5;flex:1}
+.prog{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.prog .b{flex:1;height:7px;background:#edf1f0;border-radius:4px;overflow:hidden}
+.prog .b span{display:block;height:100%;background:var(--accent);border-radius:4px}
+.mission.done{border-color:#e6cf9b;background:#fffbf1}
+.mission.done .prog .b span{background:#b7791f}
+.mission.done .t{color:#8a5a12}
+
+/* 4. 단어 DB */
+.db-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
+.db-tools input,.db-tools select{border:1px solid var(--line);border-radius:9px;padding:8px 11px;font:inherit;background:#fff;color:var(--ink)}
+.db-tools input{min-width:240px;flex:1}
+.db-tools .cnt{color:var(--ink-3);font-size:12.5px;margin-left:auto}
+.db-wrap{overflow:auto;max-height:calc(100vh - 240px)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{position:sticky;top:0;background:#f6f8f8;text-align:left;font-weight:500;color:var(--ink-2);font-size:12.5px;padding:9px 14px;border-bottom:1px solid var(--line)}
+td{padding:8px 14px;border-bottom:1px solid #edf1f0;vertical-align:top}
+td.desc-c{color:var(--ink-2);font-size:12.5px;line-height:1.5}
+
+.toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:13.5px;display:none;z-index:50}
+.toast.on{display:block}
+
+@media (max-width:1000px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .side{flex-direction:row;align-items:center;gap:12px;padding:12px 16px;overflow-x:auto}
+  .nav{flex-direction:row;margin:0}
+  .side-foot,.logo small{display:none}
+  .view{padding:18px 16px}
+  .panel,.grid2{grid-template-columns:1fr}
+  .grid4,.missions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .desk{grid-template-columns:1fr}
+  .rooms{display:none}
+  .overlay{right:16px;left:16px;width:auto}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="logo">한 번 더<small>PC 버전 · 말 다듬기 도우미</small></div>
+    <nav class="nav" aria-label="화면">
+      <button data-v="checker" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg>텍스트 검사기</button>
+      <button data-v="messenger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>메신저 체험</button>
+      <button data-v="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>대시보드</button>
+      <button data-v="db"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>단어 DB</button>
+    </nav>
+    <div class="side-foot">
+      <div class="toggle-row"><label for="opt-overlay">오버레이 알림</label><span class="switch"><input type="checkbox" id="opt-overlay" checked><span></span></span></div>
+      <div class="toggle-row"><label for="opt-low">가벼운 표현도 알림</label><span class="switch"><input type="checkbox" id="opt-low"><span></span></span></div>
+      <div>모든 분석은 이 컴퓨터 안에서만 해요. 입력한 문장은 어디에도 보내지 않아요.</div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- 1. 텍스트 검사기 -->
+    <section class="view on" id="v-checker" aria-labelledby="h-checker">
+      <div class="head"><h1 id="h-checker">텍스트 검사기</h1><p>쓰는 동안 바로 검사해요. 상처 줄 수 있는 표현은 위험도 색으로 칠해지고, 아래에서 한 번에 순화된 문장으로 바꿀 수 있어요.</p></div>
+      <div class="card checker">
+        <div class="editor">
+          <div class="editor-bar"><span id="char-count">0자</span><div class="samples" id="samples"></div></div>
+          <div class="hl"><div class="back" id="ed-back" aria-hidden="true"></div><textarea id="ed" aria-label="검사할 문장" spellcheck="false"></textarea></div>
+        </div>
+        <div class="panel" id="panel"></div>
+      </div>
+    </section>
+
+    <!-- 2. 메신저 체험 -->
+    <section class="view" id="v-messenger" aria-labelledby="h-messenger">
+      <div class="head"><h1 id="h-messenger">메신저 체험</h1><p>PC 메신저 입력창 옆에 뜨는 오버레이 위젯이에요. 입력하다 손을 멈추거나 <span class="kbd">Enter</span>를 누르면 검사하고, 문제가 있으면 보내기 전에 한 번 멈춰요.</p></div>
+      <div class="card desk">
+        <div class="rooms">
+          <div class="t">대화</div>
+          <div class="room on"><div class="av" style="background:#3f6fb5">3반</div><div><b>2학년 3반 우리끼리</b><span>하은: 수행평가 발표 끝났다ㅠ</span></div></div>
+          <div class="room"><div class="av" style="background:#5b8a3a">축</div><div><b>축구부</b><span>민준: 토요일 9시 운동장</span></div></div>
+          <div class="room"><div class="av" style="background:#8a5bb5">조</div><div><b>과학 조별과제</b><span>서연: 자료 올렸어</span></div></div>
+        </div>
+        <div class="chat">
+          <div class="chat-top"><b>2학년 3반 우리끼리</b><span style="color:var(--ink-3);font-size:13px">5명</span><span class="pill">한 번 더 켜짐</span></div>
+          <div class="msgs" id="msgs"></div>
+          <div class="composer">
+            <span class="hint"><span class="kbd">Enter</span> 보내기 · <span class="kbd">Shift</span>+<span class="kbd">Enter</span> 줄바꿈</span>
+            <div class="hl"><div class="back" id="ms-back" aria-hidden="true"></div><textarea id="ms" rows="1" aria-label="메시지 입력" placeholder="메시지를 입력하세요" spellcheck="false"></textarea></div>
+            <button class="send" id="ms-send" disabled>보내기</button>
+          </div>
+          <div class="overlay" id="overlay" role="dialog" aria-labelledby="ov-title">
+            <div class="ov-top"><span class="badge" id="ov-badge">HIGH</span><strong id="ov-title">잠깐! 상대방이 상처받을 수 있어요</strong><button class="x" id="ov-close" aria-label="알림 닫기">×</button></div>
+            <div class="ov-sub" id="ov-sub"></div>
+            <div class="chips" id="ov-chips"></div>
+            <div class="ov-actions"><button id="ov-edit">직접 고칠게요</button><button class="ghost" id="ov-keep">그대로 보내기</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 대시보드 -->
+    <section class="view" id="v-dashboard" aria-labelledby="h-dash">
+      <div class="head dash-head"><div><h1 id="h-dash">대시보드</h1><p id="dash-note">최근 7일 기록이에요. 대화 내용은 저장하지 않고 감지 횟수, 바꾼 횟수, 표현 이름만 남겨요.</p></div>
+        <div class="rec"><button id="rec-demo">예시 기록 넣기</button><button id="rec-clear">기록 지우기</button></div></div>
+      <div class="grid4" id="kpis"></div>
+      <div class="grid2">
+        <div class="card box"><h2>요일별 감지와 순화</h2><p class="sub">막대에 마우스를 올리면 날짜별 숫자가 보여요</p>
+          <div class="legend"><span><i style="background:var(--series-2)"></i>감지</span><span><i style="background:var(--series-1)"></i>순화해서 보냄</span></div>
+          <div class="chart" id="chart"></div></div>
+        <div class="card box"><h2>자주 쓴 표현</h2><p class="sub">이번 주 감지된 어절, 막대 색은 위험도</p><div class="rank" id="rank"></div><div class="levels" id="levels"></div></div>
+      </div>
+      <div><h2 style="font-size:15px;margin:6px 0 10px">칭찬 미션</h2><div class="missions" id="missions"></div></div>
+    </section>
+
+    <!-- 4. 단어 DB -->
+    <section class="view" id="v-db" aria-labelledby="h-db">
+      <div class="head"><h1 id="h-db">단어 DB</h1><p id="db-note"></p></div>
+      <div class="card">
+        <div class="db-tools">
+          <input type="search" id="db-q" placeholder="표현 검색 (예: 와꾸, 느금, 돼지)" aria-label="표현 검색">
+          <select id="db-lv" aria-label="위험도"><option value="">위험도 전체</option><option value="3">CRITICAL</option><option value="2">HIGH</option><option value="1">MEDIUM</option><option value="0">LOW</option></select>
+          <select id="db-cat" aria-label="카테고리"><option value="">카테고리 전체</option></select>
+          <span class="cnt" id="db-cnt"></span>
+        </div>
+        <div class="db-wrap"><table><thead><tr><th style="width:26%">표현</th><th style="width:11%">위험도</th><th style="width:17%">카테고리</th><th style="width:10%">유형</th><th>설명</th></tr></thead><tbody id="db-body"></tbody></table></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="words.js"></script>
+<script src="hanbeonde-engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

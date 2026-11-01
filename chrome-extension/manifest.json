@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "한 번 더 - 보내기 전에 말 다듬기",
+  "short_name": "한 번 더",
+  "version": "2.0.0",
+  "description": "웹 메신저 입력창에서 욕설·비속어·패드립·외모 비하 표현을 감지하고, 보내기 전에 고운 말로 바꿔 줍니다. 모든 분석은 내 컴퓨터 안에서만 해요.",
+  "permissions": ["storage", "activeTab"],
+  "action": {
+    "default_title": "한 번 더",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "options_page": "dashboard.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["words.js", "hanbeonde-engine.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

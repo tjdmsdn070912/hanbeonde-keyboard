@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>한 번 더</title>
+<style>
+:root{--ink:#16201e;--ink-2:#4d5a57;--ink-3:#7c8784;--line:#d8e0de;--accent:#0e6b63;--accent-soft:#dcefec}
+*{box-sizing:border-box}
+body{margin:0;width:300px;font-family:"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;color:var(--ink);background:#fff;font-size:13.5px}
+header{background:#13201e;color:#fff;padding:14px 16px}
+header b{font-size:18px;display:block}
+header span{font-size:12px;color:#9fb3ae}
+.sec{padding:12px 16px;border-bottom:1px solid var(--line);display:grid;gap:10px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.row small{display:block;color:var(--ink-3);font-size:11.5px;margin-top:1px}
+.switch{position:relative;width:36px;height:20px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.switch span{position:absolute;inset:0;background:#b9c3c0;border-radius:999px}
+.switch span::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:3px;left:3px;transition:transform .15s}
+.switch input:checked+span{background:var(--accent)}
+.switch input:checked+span::after{transform:translateX(16px)}
+.switch input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:#f4f7f6;border-radius:10px;padding:9px 10px}
+.kpi b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:11.5px;color:var(--ink-2)}
+button.main{width:100%;border:0;background:var(--accent);color:#fff;border-radius:9px;padding:9px;font:inherit;font-weight:700;cursor:pointer}
+.foot{padding:10px 16px;color:var(--ink-3);font-size:11.5px;line-height:1.5}
+</style>
+</head>
+<body>
+<header><b>한 번 더</b><span>보내기 전에 한 번 더, 내 말을 다듬어요</span></header>
+<div class="sec">
+  <div class="row"><label for="enabled">켜기<small>모든 사이트 입력창 검사</small></label><span class="switch"><input type="checkbox" id="enabled"><span></span></span></div>
+  <div class="row"><label for="site">이 사이트에서 쓰기<small id="host">-</small></label><span class="switch"><input type="checkbox" id="site"><span></span></span></div>
+  <div class="row"><label for="overlay">경고 오버레이<small>끄면 위험도 표시만 해요</small></label><span class="switch"><input type="checkbox" id="overlay"><span></span></span></div>
+  <div class="row"><label for="low">가벼운 표현도 알림<small>오징어, 메주 같은 표현</small></label><span class="switch"><input type="checkbox" id="low"><span></span></span></div>
+</div>
+<div class="sec">
+  <div class="kpis"><div class="kpi"><b id="k-detect">0회</b><span>이번 주 감지</span></div><div class="kpi"><b id="k-rate">0%</b><span>순화 전환율</span></div></div>
+  <button class="main" id="open">대시보드 · 텍스트 검사기 열기</button>
+</div>
+<div class="foot">입력한 문장은 저장하거나 어디로 보내지 않아요. 횟수와 감지된 표현만 이 컴퓨터에 남아요.</div>
+<script src="popup.js"></script>
+</body>
+</html>
